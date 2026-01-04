@@ -1,0 +1,41 @@
+name: BD2-Auto-Redeem-Task
+
+on:
+  workflow_dispatch: # 保持手动点击运行的能力
+  push:
+    paths:
+      - 'codes.txt'    # 关键点：只有当 codes.txt 被修改时才自动触发
+    branches:
+      - main           # 或者是你仓库的主分支名（通常是 main）
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install selenium webdriver-manager
+
+      - name: Run Redeem Script
+        run: python main.py
+
+      - name: Save history
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          # 拉取远程最新改动，防止多人同时操作导致的冲突
+          git pull origin main
+          git add history.json
+          git commit -m "Update redemption history [skip ci]" || echo "No changes to commit"
+          git push origin main

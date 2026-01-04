@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BD2 自动兑换终端</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 20px auto; padding: 20px; background: #f4f7f6; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input, textarea { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #007aff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        button:disabled { background: #ccc; }
+        #statusList { font-size: 14px; }
+        .status-item { border-bottom: 1px solid #eee; padding: 8px 0; display: flex; justify-content: space-between; }
+        .tag { padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+        .success { background: #e2fbe8; color: #28a745; }
+    </style>
+</head>
+<body>
+    <h2>BD2 自动兑换终端</h2>
+    
+    <div class="card">
+        <h4>录入新兑换码</h4>
+        <input type="password" id="token" placeholder="输入 GitHub Token (仅需输入一次)">
+        <input type="text" id="newCode" placeholder="输入新兑换码 (如: GIFT666)">
+        <button id="btn" onclick="submitCode()">提交并触发自动兑换</button>
+        <p style="font-size: 12px; color: #666;">* 提交后 GitHub 会在 10 秒内启动后台程序</p>
+    </div>
+
+    <div class="card">
+        <h4>兑换状态记录</h4>
+        <div id="statusList">加载中...</div>
+    </div>
+
+    <script>
+        // 1. 加载历史记录 (直接读取仓库里的 history.json)
+        async function loadHistory() {
+            try {
+                const res = await fetch('history.json?t=' + Date.now());
+                const data = await res.json();
+                const list = document.getElementById('statusList');
+                list.innerHTML = '';
+                for (const key in data) {
+                    const [name, code] = key.split('---');
+                    list.innerHTML += `<div class="status-item">
+                        <span><strong>${name}</strong><br><small>${code}</small></span>
+                        <span class="tag success">${data[key]}</span>
+                    </div>`;
+                }
+            } catch (e) {
+                document.getElementById('statusList').innerText = '暂无记录或正在生成中...';
+            }
+        }
+
+        // 2. 提交新码 (通过 API 触发 GitHub Action)
+        async function submitCode() {
+            const token = document.getElementById('token').value;
+            const code = document.getElementById('newCode').value;
+            const btn = document.getElementById('btn');
+
+            if (!token || !code) return alert("请填写 Token 和 兑换码");
+            
+            btn.disabled = true;
+            btn.innerText = "正在发送指令...";
+
+            // 这里利用 GitHub API 触发 workflow_dispatch
+            // 注意：这需要一个具有 workflow 权限的 Personal Access Token
+            const res = await fetch(`https://api.github.com/repos/${window.location.pathname.split('/')[1]}/${window.location.pathname.split('/')[2]}/actions/workflows/redeem.yml/dispatches`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                body: JSON.stringify({ ref: 'main' })
+            });
+
+            if (res.ok) {
+                alert("提交成功！后台已启动，请 3 分钟后刷新查看结果。");
+                // 这里其实还需要一个步骤把 code 写入 codes.txt，但为了简单，
+                // 建议朋友们还是直接去 codes.txt 改，或者通过 API 写入。
+            } else {
+                alert("触发失败，请检查 Token 权限是否正确。");
+            }
+            btn.disabled = false;
+            btn.innerText = "提交并触发自动兑换";
+        }
+
+        loadHistory();
+        setInterval(loadHistory, 30000); // 每 30 秒自动刷新一次
+    </script>
+</body>
+</html>

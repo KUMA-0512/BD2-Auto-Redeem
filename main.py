@@ -15,22 +15,18 @@ def redeem():
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
-    # --- 修改点：从 GitHub Secrets 读取账号 ---
+    # 从 GitHub Secrets 读取隐藏名单
     accounts_str = os.getenv("MY_ACCOUNTS_SECRET", "")
     accounts = [a.strip() for a in accounts_str.split(",") if a.strip()]
     
-    if not accounts:
-        print("未检测到账号列表，请检查 Secrets 设置！")
-        return
-
-    # 读取公开的兑换码文件
+    # 读取兑换码清单
     try:
         with open("codes.txt", "r", encoding="utf-8") as f:
             codes = [line.strip() for line in f if line.strip()]
     except:
-        print("未找到 codes.txt")
-        return
+        codes = []
 
+    # 加载历史记录
     history_file = "history.json"
     if os.path.exists(history_file):
         with open(history_file, "r", encoding="utf-8") as f:
@@ -42,15 +38,14 @@ def redeem():
     
     for code in codes:
         for name in accounts:
-            # 为了在公开的 history.json 中隐藏全名，我们可以只显示名字的前两个字
-            display_name = name[0:2] + "***" 
             task_key = f"{name}---{code}"
-            display_key = f"{display_name}---{code}"
-
             if task_key in history:
                 continue
 
-            print(f"正在兑换: {display_name}...")
+            # 脱敏显示名 (例如: 玩家123 -> 玩家1***)
+            display_name = name[0:2] + "***" if len(name) > 2 else name + "***"
+            
+            print(f"正在兌換: {display_name} | 代碼: {code}")
             try:
                 driver.get(url)
                 time.sleep(3)
@@ -63,13 +58,15 @@ def redeem():
                     alert = driver.switch_to.alert
                     res_text = alert.text
                     alert.accept()
-                    # 记录时使用脱敏后的名字，保护隐私
-                    history[task_key] = {"display": display_name, "status": res_text, "code": code}
-            except:
-                history[task_key] = {"display": display_name, "status": "Error", "code": code}
-
+                    # 存入 JSON 数据
+                    history[task_key] = {"display": display_name, "status": res_text, "code": code, "time": time.strftime("%Y-%m-%d %H:%M")}
+            except Exception as e:
+                print(f"出错: {e}")
+                
+    # 写入结果
     with open(history_file, "w", encoding="utf-8") as f:
         json.dump(history, f, indent=4, ensure_ascii=False)
+    
     driver.quit()
 
 if __name__ == "__main__":

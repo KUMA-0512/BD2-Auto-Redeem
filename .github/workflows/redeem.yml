@@ -1,22 +1,36 @@
 name: BD2-Auto-Redeem-Task
 
 on:
-  workflow_dispatch: # 允许手动运行
+  workflow_dispatch:
   push:
     paths:
-      - 'codes.txt'    # 只要 codes.txt 有变动就运行
-    branches:
-      - main           # 确保这是你的主分支名
+      - 'codes.txt'
+  issues:
+    types: [opened]
 
 permissions:
-  contents: write      # 必须开启，否则无法保存结果
+  contents: write
+  issues: write
 
 jobs:
   build:
+    # 仅处理手动触发、文件推送或标题带 CODE: 的 Issue
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'push' || 
+      (github.event_name == 'issues' && contains(github.event.issue.title, 'CODE:'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+
+      - name: Extract Code from Issue
+        if: github.event_name == 'issues'
+        run: |
+          # 提取标题中 CODE: 之后的内容并追加到 codes.txt
+          NEW_CODE=$(echo "${{ github.event.issue.title }}" | sed 's/CODE://')
+          echo "$NEW_CODE" >> codes.txt
+          echo "已将新码 [$NEW_CODE] 写入 codes.txt"
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -29,16 +43,20 @@ jobs:
 
       - name: Run Redeem Script
         env:
-          # 此处必须与你在 Repository Secrets 中设置的名字一致
-          MY_ACCOUNTS_SECRET: ${{ secrets.GAME_ACCOUNTS }} 
+          MY_ACCOUNTS_SECRET: ${{ secrets.GAME_ACCOUNTS }}
         run: python main.py
 
-      - name: Save history
+      - name: Save Changes and Close Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git pull origin main
-          git add history.json
-          # [skip ci] 防止自动提交再次触发运行，陷入死循环
-          git commit -m "Update redemption history [skip ci]" || echo "No changes to commit"
+          git add codes.txt history.json
+          git commit -m "Update via Task [skip ci]" || echo "No changes to commit"
           git push origin main
+          
+          # 如果是 Issue 触发，完成后自动关闭它
+          if [ "${{ github.event_name }}" == "issues" ]; then
+            gh issue close ${{ github.event.issue.number }} --comment "兌換任務已完成，結果已更新至網頁。"
+          fi

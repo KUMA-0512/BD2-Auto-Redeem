@@ -1,15 +1,15 @@
 name: BD2-Auto-Redeem-Task
 
 on:
-  workflow_dispatch: # 保持手动点击运行的能力
+  workflow_dispatch: # 允许手动运行
   push:
     paths:
-      - 'codes.txt'    # 关键点：只有当 codes.txt 被修改时才自动触发
+      - 'codes.txt'    # 只要 codes.txt 有变动就运行
     branches:
-      - main           # 或者是你仓库的主分支名（通常是 main）
+      - main           # 确保这是你的主分支名
 
 permissions:
-  contents: write
+  contents: write      # 必须开启，否则无法保存结果
 
 jobs:
   build:
@@ -28,14 +28,17 @@ jobs:
           pip install selenium webdriver-manager
 
       - name: Run Redeem Script
+        env:
+          # 此处必须与你在 Repository Secrets 中设置的名字一致
+          MY_ACCOUNTS_SECRET: ${{ secrets.GAME_ACCOUNTS }} 
         run: python main.py
 
       - name: Save history
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          # 拉取远程最新改动，防止多人同时操作导致的冲突
           git pull origin main
           git add history.json
+          # [skip ci] 防止自动提交再次触发运行，陷入死循环
           git commit -m "Update redemption history [skip ci]" || echo "No changes to commit"
           git push origin main
